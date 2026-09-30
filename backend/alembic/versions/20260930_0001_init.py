@@ -21,8 +21,6 @@ depends_on: Union[str, Sequence[str], None] = None
 def upgrade() -> None:
     processing_status = sa.Enum("UPLOADED", "PROCESSING", "COMPLETED", "FAILED", "REVIEWED", name="processing_status")
     ocr_processing_status = sa.Enum("UPLOADED", "PROCESSING", "COMPLETED", "FAILED", "REVIEWED", name="ocr_processing_status")
-    processing_status.create(op.get_bind(), checkfirst=True)
-    ocr_processing_status.create(op.get_bind(), checkfirst=True)
 
     op.create_table(
         "documents",
