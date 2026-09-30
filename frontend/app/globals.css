@@ -1,0 +1,29 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg-top: #f8fafc;
+  --bg-bottom: #e0f2fe;
+  --panel: #ffffff;
+  --ink: #0f172a;
+  --muted: #334155;
+  --accent: #14532d;
+}
+
+html,
+body {
+  min-height: 100%;
+  color: var(--ink);
+}
+
+body {
+  background:
+    radial-gradient(circle at 10% 0%, #fef3c7 0%, transparent 30%),
+    radial-gradient(circle at 90% 20%, #bfdbfe 0%, transparent 40%),
+    linear-gradient(180deg, var(--bg-top) 0%, var(--bg-bottom) 100%);
+}
+
+.panel {
+  @apply bg-white/85 backdrop-blur border border-slate-200 rounded-2xl shadow-card;
+}
