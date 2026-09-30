@@ -26,6 +26,12 @@ class UnsupportedFileError(AppError):
     message = "Unsupported file"
 
 
+class SummaryNotReadyError(AppError):
+    status_code = 409
+    code = "SUMMARY_NOT_READY"
+    message = "OCR result not available yet"
+
+
 class ServiceUnavailableError(AppError):
     status_code = 503
     code = "SERVICE_UNAVAILABLE"

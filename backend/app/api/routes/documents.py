@@ -4,7 +4,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, File, UploadFile
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
-from app.api.errors import NotFoundError, ServiceUnavailableError
+from app.api.errors import NotFoundError, ServiceUnavailableError, SummaryNotReadyError
 from app.db.database import SessionLocal, get_db
 from app.schemas.document import DocumentListResponse, DocumentOut
 from app.schemas.extraction import CorrectionInput
@@ -61,6 +61,8 @@ def generate_summary(document_id: UUID, db: Session = Depends(get_db)) -> Genera
         summary = summary_service.generate_for_document(db, document)
         db.commit()
         db.refresh(summary)
+    except ValueError as exc:
+        raise SummaryNotReadyError(str(exc)) from exc
     except RuntimeError as exc:
         raise ServiceUnavailableError("LLM service unavailable") from exc
     return GenerateSummaryResponse(summary=SummaryResponse.model_validate(summary))

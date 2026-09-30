@@ -18,7 +18,7 @@ class OllamaProvider(LLMProvider):
                     "prompt": prompt,
                     "stream": False,
                 },
-                timeout=60,
+                timeout=self.settings.ollama_timeout_seconds,
             )
             response.raise_for_status()
         except httpx.HTTPError as exc:
