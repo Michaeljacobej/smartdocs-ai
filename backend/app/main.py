@@ -10,7 +10,7 @@ from fastapi.requests import Request
 from fastapi.responses import JSONResponse
 
 from app.api.errors import AppError, app_error_handler, internal_error_handler
-from app.api.routes.documents import router as documents_router
+from app.api.routes.documents import requeue_processing_documents_on_startup, router as documents_router
 from app.core.config import get_settings
 from app.core.logging import bind_log_context, clear_log_context, configure_logging
 
@@ -48,6 +48,15 @@ app.include_router(documents_router)
 
 app.add_exception_handler(AppError, app_error_handler)
 app.add_exception_handler(Exception, internal_error_handler)
+
+
+@app.on_event("startup")
+def startup_requeue_documents() -> None:
+    requeued = requeue_processing_documents_on_startup()
+    logger.info(
+        "Startup processing queue recovery completed",
+        extra={"event": "startup_queue_recovery_completed", "requeued_count": requeued},
+    )
 
 
 @app.middleware("http")

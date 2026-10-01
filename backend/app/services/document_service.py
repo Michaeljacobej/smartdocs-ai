@@ -89,10 +89,13 @@ class DocumentService:
         document.processing_status = ProcessingStatus.PROCESSING
         db.add(document)
         db.commit()
+        document_id_str = str(document.id)
 
         try:
             ocr = self.ocr_service.extract_text(Path(document.file_path))
-            ocr_result = document.ocr_result or OCRResult(document_id=document.id)
+            ocr_result = document.ocr_result
+            if ocr_result is None:
+                ocr_result = OCRResult(document=document)
             ocr_result.raw_text = ocr.raw_text
             ocr_result.processing_status = ProcessingStatus.COMPLETED
             ocr_result.processing_time_ms = ocr.processing_time_ms
@@ -108,7 +111,13 @@ class DocumentService:
             confidence_payload["ocr_lines"] = [
                 {"text": line.text, "confidence": line.confidence} for line in ocr.lines
             ]
-            confidence_payload["field_confidences"] = self._build_field_confidences(extracted, ocr.lines)
+            field_confidences = self._build_field_confidences(extracted, ocr.lines)
+            confidence_payload["field_confidences"] = field_confidences
+            confidence_payload["evaluation"] = self._evaluate_confidence(
+                extracted=extracted,
+                field_confidences=field_confidences,
+                anomaly_count=len(validation.anomalies),
+            )
 
             extracted_data = document.extracted_data or ExtractedData(document_id=document.id)
             extracted_data.document_number_original = extracted.document_number
@@ -120,7 +129,11 @@ class DocumentService:
             extracted_data.confidence_data = confidence_payload
             db.add(extracted_data)
 
-            document.processing_status = ProcessingStatus.COMPLETED
+            decision = confidence_payload["evaluation"]["decision"]
+            if decision == "REVIEW":
+                document.processing_status = ProcessingStatus.REVIEW_REQUIRED
+            else:
+                document.processing_status = ProcessingStatus.COMPLETED
             db.add(document)
             db.commit()
             logger.info(
@@ -133,20 +146,23 @@ class DocumentService:
                 },
             )
         except RuntimeError as exc:
+            db.rollback()
             logger.exception(
                 "Document processing dependency failure",
-                extra={"event": "document_processing_dependency_failure", "document_id": str(document.id)},
+                extra={"event": "document_processing_dependency_failure", "document_id": document_id_str},
             )
             self._mark_failed(db, document, str(exc))
             raise ServiceUnavailableError("OCR or LLM service unavailable") from exc
         except ExtractionError as exc:
+            db.rollback()
             logger.warning(
                 "Document extraction failed",
-                extra={"event": "document_extraction_failed", "document_id": str(document.id), "reason": str(exc)},
+                extra={"event": "document_extraction_failed", "document_id": document_id_str, "reason": str(exc)},
             )
             self._mark_failed(db, document, str(exc))
         except Exception:
-            logger.exception("Document processing failed", extra={"event": "document_processing_failed", "document_id": str(document.id)})
+            db.rollback()
+            logger.exception("Document processing failed", extra={"event": "document_processing_failed", "document_id": document_id_str})
             self._mark_failed(db, document, "Unexpected processing error")
 
     def list_documents(self, db: Session) -> list[Document]:
@@ -193,7 +209,16 @@ class DocumentService:
         return document
 
     def _mark_failed(self, db: Session, document: Document, message: str) -> None:
-        ocr_result = document.ocr_result or OCRResult(document_id=document.id)
+        ocr_result = document.ocr_result
+        if ocr_result is None:
+            ocr_result = (
+                db.query(OCRResult)
+                .filter(OCRResult.document_id == document.id)
+                .order_by(OCRResult.created_at.desc())
+                .first()
+            )
+        if ocr_result is None:
+            ocr_result = OCRResult(document=document)
         ocr_result.processing_status = ProcessingStatus.FAILED
         ocr_result.error_message = message[:500]
         db.add(ocr_result)
@@ -230,6 +255,58 @@ class DocumentService:
             "total_amount": self._score_amount_field(extracted.total_amount, line_payload, hints=("total", "amount", "grand total", "subtotal")),
             "tax_amount": self._score_amount_field(extracted.tax_amount, line_payload, hints=("tax", "ppn", "vat")),
             "currency": self._score_text_field(extracted.currency, line_payload, hints=("idr", "usd", "eur", "sgd", "jpy", "myr", "thb", "php", "rp")),
+        }
+
+    @staticmethod
+    def _evaluate_confidence(
+        *,
+        extracted,
+        field_confidences: dict[str, float],
+        anomaly_count: int,
+    ) -> dict:
+        accept_threshold = 0.78
+        critical_fields = (
+            "document_number",
+            "vendor",
+            "document_date",
+            "total_amount",
+            "currency",
+        )
+
+        missing_critical_fields = []
+        for field_name in critical_fields:
+            value = getattr(extracted, field_name, None)
+            if value is None or (isinstance(value, str) and not value.strip()):
+                missing_critical_fields.append(field_name)
+
+        scored_values = [
+            max(0.0, min(1.0, float(value)))
+            for value in field_confidences.values()
+            if isinstance(value, (float, int))
+        ]
+        base_score = sum(scored_values) / len(scored_values) if scored_values else 0.0
+
+        anomaly_penalty = min(anomaly_count * 0.08, 0.30)
+        missing_penalty = min(len(missing_critical_fields) * 0.10, 0.40)
+        overall_score = max(0.0, min(1.0, base_score - anomaly_penalty - missing_penalty))
+
+        review_reasons = []
+        if anomaly_count:
+            review_reasons.append("validation_anomalies")
+        if missing_critical_fields:
+            review_reasons.append("missing_critical_fields")
+        if overall_score < accept_threshold:
+            review_reasons.append("overall_confidence_below_threshold")
+
+        decision = "REVIEW" if review_reasons else "ACCEPT"
+
+        return {
+            "decision": decision,
+            "overall_score": round(overall_score, 2),
+            "threshold": accept_threshold,
+            "anomaly_count": anomaly_count,
+            "missing_critical_fields": missing_critical_fields,
+            "reasons": review_reasons,
         }
 
     def _score_text_field(

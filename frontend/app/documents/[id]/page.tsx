@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
+import { ConfidenceEvaluationCard } from "@/components/ConfidenceEvaluationCard";
 import { DocumentPreview } from "@/components/DocumentPreview";
 import { ExtractedDataForm } from "@/components/ExtractedDataForm";
 import { OCRViewer } from "@/components/OCRViewer";
@@ -87,6 +88,7 @@ export default function DocumentDetailPage() {
       <OCRViewer text={document.ocr_result?.raw_text || null} />
       <ExtractedDataForm document={document} onSaved={() => void load()} />
       <SummaryCard document={document} onUpdated={() => void load()} />
+      <ConfidenceEvaluationCard document={document} />
     </main>
   );
 }

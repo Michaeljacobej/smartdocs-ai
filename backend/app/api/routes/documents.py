@@ -7,11 +7,13 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, UploadFile
 from fastapi.responses import FileResponse
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 
 from app.api.errors import NotFoundError, ServiceUnavailableError, SummaryNotReadyError
+from app.db.models import Document, ProcessingStatus
 from app.db.database import SessionLocal, get_db
 from app.schemas.document import DocumentListResponse, DocumentOut
 from app.schemas.extraction import CorrectionInput
@@ -127,5 +129,24 @@ def _process_document_sync(document_id: UUID) -> None:
         logger.info("Background processing finished", extra={"event": "document_processing_finished", "document_id": str(document_id)})
     except Exception:
         logger.exception("Document processing failed", extra={"event": "document_processing_failed", "document_id": str(document_id)})
+    finally:
+        db.close()
+
+
+def requeue_processing_documents_on_startup() -> int:
+    """Requeue documents left in PROCESSING (e.g., after app restart)."""
+    db = SessionLocal()
+    try:
+        stmt = select(Document.id).where(Document.processing_status == ProcessingStatus.PROCESSING)
+        ids = list(db.scalars(stmt))
+        for document_id in ids:
+            PROCESSING_QUEUE.put(document_id)
+
+        if ids:
+            logger.info(
+                "Requeued processing documents on startup",
+                extra={"event": "documents_requeued_on_startup", "count": len(ids)},
+            )
+        return len(ids)
     finally:
         db.close()

@@ -3,6 +3,7 @@ export type ProcessingStatus =
   | "PROCESSING"
   | "COMPLETED"
   | "FAILED"
+  | "REVIEW_REQUIRED"
   | "REVIEWED";
 
 export interface OCRResult {
@@ -38,6 +39,14 @@ export interface ExtractionConfidenceData {
   anomalies?: Array<{ type: string; message: string }>;
   ocr_lines?: Array<{ text: string; confidence: number | null }>;
   field_confidences?: Record<string, number>;
+  evaluation?: {
+    decision: "ACCEPT" | "REVIEW";
+    overall_score: number;
+    threshold: number;
+    anomaly_count: number;
+    missing_critical_fields: string[];
+    reasons: string[];
+  };
 }
 
 export interface Summary {

@@ -24,15 +24,21 @@ class ExtractionService:
 
         needs_llm = any(value is None for value in rule_data.model_dump().values())
         if needs_llm and self.llm_provider:
-            llm_data = self._llm_extract(ocr_text)
-            merged = rule_data.model_dump()
-            for key, value in llm_data.model_dump().items():
-                if merged.get(key) is None and value is not None:
-                    merged[key] = value
-            final = ExtractedFields(**merged)
-            confidence_payload["llm_used"] = True
-            confidence_payload["llm_matches"] = llm_data.model_dump()
-            return final, confidence_payload
+            try:
+                llm_data = self._llm_extract(ocr_text)
+                merged = rule_data.model_dump()
+                for key, value in llm_data.model_dump().items():
+                    if merged.get(key) is None and value is not None:
+                        merged[key] = value
+                final = ExtractedFields(**merged)
+                confidence_payload["llm_used"] = True
+                confidence_payload["llm_matches"] = llm_data.model_dump()
+                return final, confidence_payload
+            except Exception as exc:
+                # Keep pipeline running when LLM is unavailable or returns invalid output.
+                confidence_payload["llm_used"] = False
+                confidence_payload["llm_error"] = str(exc)
+                return rule_data, confidence_payload
 
         confidence_payload["llm_used"] = False
         return rule_data, confidence_payload

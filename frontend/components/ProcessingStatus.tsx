@@ -16,6 +16,11 @@ const statusMap: Record<Status, { label: string; color: string; message: string 
     color: "bg-emerald-100 text-emerald-800",
     message: "OCR and extraction completed.",
   },
+  REVIEW_REQUIRED: {
+    label: "Review Required",
+    color: "bg-orange-100 text-orange-800",
+    message: "Low confidence or anomalies detected, human review required.",
+  },
   FAILED: {
     label: "Failed",
     color: "bg-rose-100 text-rose-800",

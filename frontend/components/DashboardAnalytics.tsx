@@ -4,6 +4,7 @@ const statusStyles: Record<ProcessingStatus, string> = {
   UPLOADED: "bg-sky-100 text-sky-800",
   PROCESSING: "bg-amber-100 text-amber-800",
   COMPLETED: "bg-emerald-100 text-emerald-800",
+  REVIEW_REQUIRED: "bg-orange-100 text-orange-800",
   FAILED: "bg-rose-100 text-rose-800",
   REVIEWED: "bg-indigo-100 text-indigo-800",
 };
@@ -25,6 +26,7 @@ export function DashboardAnalytics({ items }: { items: DocumentItem[] }) {
     UPLOADED: 0,
     PROCESSING: 0,
     COMPLETED: 0,
+    REVIEW_REQUIRED: 0,
     FAILED: 0,
     REVIEWED: 0,
   };

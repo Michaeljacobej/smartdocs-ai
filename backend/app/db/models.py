@@ -15,6 +15,7 @@ class ProcessingStatus(str, enum.Enum):
     PROCESSING = "PROCESSING"
     COMPLETED = "COMPLETED"
     FAILED = "FAILED"
+    REVIEW_REQUIRED = "REVIEW_REQUIRED"
     REVIEWED = "REVIEWED"
 
 
@@ -52,7 +53,7 @@ class OCRResult(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     document_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("documents.id", ondelete="CASCADE"), nullable=False, index=True
+        UUID(as_uuid=True), ForeignKey("documents.id", ondelete="CASCADE"), nullable=False, unique=True, index=True
     )
 
     raw_text: Mapped[str | None] = mapped_column(Text, nullable=True)
