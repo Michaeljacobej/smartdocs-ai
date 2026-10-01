@@ -1,236 +1,66 @@
-# AI Document Processing Portal
+# SmartDocs AI
 
-A 1-day prototype for end-to-end transaction document processing:
+SmartDocs AI adalah prototype aplikasi untuk memproses dokumen transaksi secara otomatis, mulai dari upload file, OCR, klasifikasi tipe dokumen, ekstraksi data struktural, validasi, hingga pembuatan ringkasan menggunakan model AI lokal.
 
-1. Upload document
-2. OCR extraction (PaddleOCR)
-3. Classification
-4. Structured extraction (rule + LLM fallback)
-5. Validation/anomaly checks
-6. AI summary generation (Ollama + Qwen3)
-7. Human correction workflow
-8. Persist all results in PostgreSQL
+Tujuan utama aplikasi ini adalah membantu mengurangi pekerjaan manual pada dokumen seperti invoice, nota, atau bukti transaksi dengan pendekatan end-to-end yang sederhana namun cukup fungsional untuk prototype dan pengembangan lebih lanjut.
 
-## Overview
+## Fitur utama
 
-This project is implemented as a modular monolith:
+- Upload dokumen PDF atau gambar
+- OCR otomatis menggunakan PaddleOCR
+- Klasifikasi jenis dokumen
+- Ekstraksi data seperti nomor dokumen, vendor, tanggal, total, pajak, dan mata uang
+- Validasi logika data dan deteksi anomali
+- Ringkasan AI berdasarkan teks OCR
+- Workflow review/manual correction oleh pengguna
+- Penyimpanan data di PostgreSQL
 
-- Next.js frontend (dashboard + document detail)
-- FastAPI backend (API + processing services)
-- PostgreSQL (document, OCR, extraction, summary data)
-- Ollama (local model serving)
+## Cara menjalankan aplikasi
 
-No unnecessary microservices are introduced.
+### 1) Clone project dan siapkan environment
 
-## Architecture
-
-User  
--> Next.js Frontend  
--> FastAPI Backend  
--> Document Processing Service  
--> PaddleOCR  
--> Raw OCR Result  
--> Classification  
--> Extraction  
--> Validation  
--> Structured Data (PostgreSQL)  
--> Summary Service  
--> LLM Provider Abstraction  
--> Ollama + Qwen3  
--> Summary (PostgreSQL)
-
-## Tech Stack
-
-Backend:
-- Python 3.12+
-- FastAPI
-- SQLAlchemy
-- Pydantic v2
-- Alembic
-- PostgreSQL
-- Uvicorn
-
-Frontend:
-- Next.js 15
-- React 19
-- TypeScript
-- Tailwind CSS
-
-OCR:
-- PaddleOCR
-
-LLM:
-- Ollama + Qwen3
-
-## Project Structure
-
-```text
-.
-├── backend
-│   ├── alembic
-│   ├── app
-│   │   ├── api
-│   │   ├── core
-│   │   ├── db
-│   │   ├── prompts
-│   │   ├── schemas
-│   │   ├── services
-│   │   └── utils
-│   ├── tests
-│   ├── requirements.txt
-│   └── .env.example
-├── frontend
-│   ├── app
-│   ├── components
-│   ├── lib
-│   ├── types
-│   └── package.json
-├── docker-compose.yml
-├── .env.example
-└── README.md
+```bash
+git clone <repo-url>
+cd smartdocs-ai
+copy .env.example .env
 ```
 
-## Database Schema
+File `.env` berisi konfigurasi untuk backend dan frontend. Pastikan variabel utama sudah sesuai seperti:
 
-Tables:
-- `documents`
-- `ocr_results`
-- `extracted_data`
-- `summaries`
-
-Highlights:
-- UUID primary keys
-- Foreign key constraints with cascade delete
-- Timestamps (`created_at`, `updated_at`)
-- Indexes on status, date, type, common search keys
-- Original and corrected extracted values are stored separately
-
-## OCR Approach
-
-PaddleOCR is used because it works well for mixed printed document layouts and supports confidence scoring. OCR results are stored as raw text plus metadata (`processing_status`, `processing_time_ms`, `error_message`) and line-level confidence payload in `confidence_data`.
-
-## Extraction Approach
-
-1. Rule-based extraction first for reliable patterns.
-2. LLM fallback for missing/complex fields.
-3. Strict Pydantic validation (`ExtractedFields`).
-4. Invalid/malformed LLM JSON is not accepted silently.
-
-Fields:
-- document_number
-- vendor
-- document_date
-- total_amount
-- tax_amount
-- currency
-
-Normalization:
-- Date to `YYYY-MM-DD`
-- Amount to numeric
-- Currency to uppercase code
-
-## Validation Strategy
-
-`ValidationService` performs:
-- schema and date validation
-- currency checks
-- amount checks
-- consistency checks (e.g., tax > total anomaly)
-
-Anomalies are persisted in `confidence_data.anomalies` and do not block persistence of the document.
-
-## LLM Strategy
-
-An abstraction layer is used:
-
-- `LLMProvider` interface (`generate_text`)
-- `OllamaProvider` implementation (`OLLAMA_BASE_URL`, `LLM_MODEL`)
-
-Business services depend on `LLMProvider`, not directly on Ollama.
-
-## Prompt Design
-
-Dedicated prompts:
-- extraction prompt: strict JSON, no hallucination, null when unknown
-- summary prompt: summarize only from persisted OCR text in Indonesian
-- classification prompt hint for fallback
-
-## Human Correction
-
-`PUT /documents/{id}/extracted-data` stores corrected values in `*_corrected` columns while preserving `*_original` values for traceability.
-
-## API Documentation
-
-Implemented endpoints:
-- `POST /documents`
-- `GET /documents`
-- `GET /documents/{id}`
-- `DELETE /documents/{id}`
-- `PUT /documents/{id}/extracted-data`
-- `POST /documents/{id}/summary`
-- `GET /documents/{id}/file`
-
-Error payload format:
-
-```json
-{
-  "error": {
-    "code": "DOCUMENT_NOT_FOUND",
-    "message": "Document not found"
-  }
-}
+```env
+DATABASE_URL=postgresql+psycopg://postgres:postgres@localhost:5432/document_ai
+OLLAMA_BASE_URL=http://localhost:11434
+LLM_MODEL=qwen3
+NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
 ```
 
-## Logging
+### 2) Jalankan PostgreSQL
 
-Backend logs use structured JSON output to make filtering and tracing easier in terminal or log collectors.
+Rekomendasi paling mudah menggunakan Docker Compose:
 
-Included fields:
-- `timestamp`
-- `level`
-- `logger`
-- `message`
-- `event`
-- `request_id` (for HTTP lifecycle correlation)
+```bash
+docker compose up -d postgres
+```
 
-## Environment Variables
+Ini akan menjalankan database PostgreSQL di port `5433` pada host (karena mapping `5433:5432` di Docker Compose).
 
-Root `.env` (example in `.env.example`):
+### 3) Jalankan Ollama (opsional jika ingin gunakan LLM lokal)
 
-- `DATABASE_URL`
-- `OLLAMA_BASE_URL`
-- `LLM_MODEL`
-- `LLM_SUMMARY_MODEL`
-- `LLM_SUMMARY_FALLBACK_MODEL`
-- `OLLAMA_TIMEOUT_SECONDS`
-- `OLLAMA_SUMMARY_TIMEOUT_SECONDS`
-- `OLLAMA_KEEP_ALIVE`
-- `OLLAMA_THINK`
-- `OLLAMA_RETRY_ATTEMPTS`
-- `OLLAMA_RETRY_BACKOFF_SECONDS`
-- `OLLAMA_NUM_PREDICT`
-- `OLLAMA_NUM_CTX`
-- `OLLAMA_TEMPERATURE`
-- `OLLAMA_SUMMARY_NUM_PREDICT`
-- `OLLAMA_SUMMARY_NUM_CTX`
-- `OLLAMA_SUMMARY_TEMPERATURE`
-- `SUMMARY_MAX_OCR_CHARS`
-- `UPLOAD_DIR`
-- `MAX_FILE_SIZE_MB`
-- `APP_ENV`
-- `DEBUG`
-- `LOG_LEVEL`
-- `NEXT_PUBLIC_API_BASE_URL`
+Jika ingin menjalankan model AI lokal melalui Ollama:
 
-## Installation
+```bash
+docker compose --profile ollama up -d ollama
+```
 
-### 1) Prepare environment files
+Lalu unduh model yang dibutuhkan, misalnya:
 
-- Copy `.env.example` to `.env`
-- Copy `frontend/.env.example` to `frontend/.env.local`
-- Optionally copy `backend/.env.example` to `backend/.env`
+```bash
+ollama pull qwen3
+```
 
-### 2) Python/backend dependencies
+Atau gunakan model lain yang sudah diatur di `.env`.
+
+### 4) Install dependency backend
 
 ```bash
 cd backend
@@ -240,23 +70,276 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-### 3) Frontend dependencies
+### 5) Jalankan backend FastAPI
+
+```bash
+cd backend
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+Backend akan tersedia di:
+
+- API: http://localhost:8000
+- Health check: http://localhost:8000/health
+
+### 6) Install dependency frontend
 
 ```bash
 cd frontend
 npm install
 ```
 
-## Running PostgreSQL
-
-Option A (Docker Compose recommended):
+### 7) Jalankan frontend Next.js
 
 ```bash
-docker compose up -d postgres
+cd frontend
+npm run dev
 ```
 
-Option B (local PostgreSQL):
-- Ensure DB exists and `DATABASE_URL` points to it.
+Frontend akan tersedia di:
+
+- http://localhost:3000
+
+### 8) Akses aplikasi
+
+Buka browser ke `http://localhost:3000` dan upload dokumen PDF atau gambar untuk diproses.
+
+---
+
+## Overview arsitektur / komponen
+
+Aplikasi ini dibangun menggunakan pendekatan modular monolith, bukan microservices, karena kebutuhan prototype cepat dan pengelolaan yang lebih sederhana.
+
+Komponen utama:
+
+- Frontend: Next.js + React + TypeScript
+- Backend: FastAPI + SQLAlchemy + Pydantic
+- Database: PostgreSQL
+- OCR engine: PaddleOCR
+- LLM runtime: Ollama
+- File storage: lokal di folder `backend/uploads`
+
+Diagram alur proses:
+
+```text
+User / Browser
+    -> Next.js Frontend
+    -> FastAPI API
+    -> DocumentService
+        -> File validation
+        -> OCRService
+        -> ClassificationService
+        -> ExtractionService
+        -> ValidationService
+        -> SummaryService
+    -> PostgreSQL
+    -> Ollama (LLM local)
+```
+
+Detail alur:
+
+1. User mengunggah file PDF/gambar.
+2. Backend menyimpan file ke `uploads` dan menyimpan metadata dokumen ke database.
+3. Dokumen dimasukkan ke antrian background processing.
+4. OCR dilakukan untuk menghasilkan raw text dari halaman dokumen.
+5. Teks hasil OCR diklasifikasikan ke tipe dokumen tertentu.
+6. Data ektraksi diproses dari teks OCR sesuai pola dokumen.
+7. Hasil dievaluasi dengan validator dan confidence scoring.
+8. Jika diperlukan, user dapat memperbaiki data yang diekstraksi.
+9. Summary dibuat dari OCR text menggunakan model LLM lokal.
+
+Struktur folder utama:
+
+```text
+smartdocs-ai/
+├── backend/
+│   ├── app/
+│   │   ├── api/
+│   │   ├── core/
+│   │   ├── db/
+│   │   ├── prompts/
+│   │   ├── schemas/
+│   │   ├── services/
+│   │   ├── tests/
+│   │   └── utils/
+│   ├── alembic/
+│   ├── requirements.txt
+│   └── uploads/
+├── frontend/
+│   ├── app/
+│   ├── components/
+│   ├── lib/
+│   └── types/
+├── docker-compose.yml
+├── .env
+├── .env.example
+├── README.md
+└── smartdocs-ai.postman_collection.json
+```
+
+---
+
+## OCR & AI/LLM yang digunakan
+
+### OCR
+
+OCR yang dipakai adalah PaddleOCR.
+
+Alasannya:
+
+- cocok untuk dokumen cetak dan campuran teks serta tabel
+- mendukung proses OCR pada PDF dan gambar
+- dapat menghasilkan confidence score per baris teks
+- relatif mudah diintegrasikan ke pipeline Python
+
+Di backend, OCR dilakukan melalui `OCRService` yang:
+
+- membaca PDF menggunakan PyMuPDF (`fitz`)
+- melakukan ekstraksi teks yang bisa dibaca secara langsung jika tersedia
+- jika teks tidak cukup, maka halaman PDF diubah menjadi gambar lalu diproses dengan PaddleOCR
+- untuk file gambar, image diproses langsung dari array numpy/Pillow
+
+### LLM / AI
+
+Model AI dijalankan melalui Ollama sebagai runtime lokal.
+
+Teknologi yang digunakan:
+
+- `Ollama` untuk menjalankan model LLM secara lokal
+- `httpx` untuk komunikasi ke endpoint Ollama
+- abstraction `LLMProvider` sebagai lapisan umum agar business logic tidak tergantung langsung ke implementasi tertentu
+
+Model yang umum dipakai untuk ekstraksi dan ringkasan adalah model dari keluarga Qwen, misalnya:
+
+- `qwen3`
+- `qwen2.5:0.5b` sebagai fallback / alternatif model ringan
+
+Arsitektur LLM yang diterapkan:
+
+- `ClassificationService` menggunakan LLM untuk menentukan tipe dokumen
+- `ExtractionService` menggunakan prompt terstruktur untuk mengekstrak field penting dari OCR
+- `SummaryService` menggunakan model LLM untuk membuat ringkasan singkat dari teks dokumen dalam bahasa Indonesia
+
+Semua pemanggilan LLM dibungkus dalam adapter `OllamaProvider` agar nanti mudah mengganti backend model lain tanpa mengubah business service.
+
+---
+
+## Alasan pemilihan teknologi
+
+### FastAPI
+
+Dipilih karena:
+
+- ringan dan cepat untuk API
+- validasi data otomatis dengan Pydantic
+- cocok untuk prototype produk dengan struktur backend yang terorganisir
+- kompatibel dengan ekosistem Python dan SQLAlchemy
+
+### Next.js + React + TypeScript
+
+Dipilih karena:
+
+- pengalaman UI yang cepat dan modern
+- cocok untuk dashboard document processing
+- struktur komponen yang mudah dikembangkan
+- mudah diintegrasikan dengan backend API
+
+### PostgreSQL
+
+Dipilih karena:
+
+- cocok untuk data relasional seperti dokumen, OCR result, ekstraksi, dan review
+- mendukung transaksional data dengan integritas yang baik
+- mudah dikelola melalui SQLAlchemy dan Alembic
+
+### Ollama
+
+Dipilih karena:
+
+- memungkinkan menjalankan model LLM lokal tanpa bergantung pada layanan cloud
+- cocok untuk prototipe dan lingkungan pengembangan yang lebih terkontrol
+- lebih hemat biaya untuk penggunaan internal / eksperimen
+
+### PaddleOCR
+
+Dipilih karena:
+
+- open-source dan cukup kuat untuk dokumen cetak
+- cocok untuk tugas OCR document processing yang tidak terlalu kompleks
+- dapat menghasilkan confidence score untuk evaluasi kualitas OCR
+
+---
+
+## Known limitations
+
+Beberapa keterbatasan yang perlu diketahui saat ini:
+
+- OCR masih sangat bergantung pada kualitas scan atau PDF. Dokumen buram, miring, atau banyak noise dapat menurunkan akurasi.
+- Model LLM lokal mungkin lebih lambat dibanding layanan cloud dan terbatas oleh spesifikasi mesin.
+- Saat ini pipeline lebih fokus pada dokumen transaksi tertentu, bukan seluruh jenis dokumen secara umum.
+- Validasi masih relatif rule-based dan belum sepenuhnya dapat mengenali semua pola anomali yang kompleks.
+- Antrian processing bersifat in-memory, sehingga belum sepenuhnya siap untuk skala produksi multi-worker atau failover.
+- Belum ada autentikasi/otorisasi user yang kuat untuk akses aplikasi.
+- Penyimpanan file saat ini masih lokal, belum menggunakan object storage seperti S3 atau GCS.
+
+---
+
+## Perbaikan yang akan dilakukan jika aplikasi dikembangkan lebih lanjut
+
+Beberapa area pengembangan yang direncanakan:
+
+1. Skalabilitas
+   - mengganti antrian in-memory dengan Celery/RQ atau message broker
+   - menambahkan worker yang lebih banyak dan monitoring job queue
+
+2. Kualitas OCR dan ekstraksi
+   - menambahkan model OCR yang lebih kuat untuk dokumen low-quality
+   - memperbaiki prompt dan pola extraction untuk jenis dokumen yang lebih beragam
+   - menambahkan eksekusi batch dan proses multi-page yang lebih optimal
+
+3. Kualitas AI
+   - membandingkan beberapa model LLM untuk performa terbaik per tugas
+   - menambahkan fallback model yang lebih robust
+   - memperbaiki prompt untuk output JSON yang lebih konsisten
+
+4. UX dan review workflow
+   - menambahkan halaman review yang lebih kaya untuk koreksi data manual
+   - menampilkan confidence score per field secara lebih visual
+   - menambahkan history perubahan data dan audit log
+
+5. Produksi-ready platform
+   - menambahkan autentikasi dan otorisasi
+   - menjalankan backend dan frontend di environment terpisah / deployment pipeline
+   - menambahkan monitoring, logging terpusat, dan alerting
+   - migrasi storage file ke object storage
+
+6. Integrasi bisnis
+   - integrasi dengan ERP atau sistem akuntansi
+   - export data ke format Excel/CSV
+   - dukungan multi-tenant dan RBAC
+
+---
+
+## API utama
+
+Endpoint yang sudah tersedia di backend:
+
+- `POST /documents` — upload dokumen
+- `GET /documents` — daftar dokumen
+- `GET /documents/{id}` — detail dokumen
+- `DELETE /documents/{id}` — hapus dokumen
+- `PUT /documents/{id}/extracted-data` — koreksi data hasil ekstraksi
+- `POST /documents/{id}/summary` — generate ringkasan dokumen
+- `GET /documents/{id}/file` — ambil file asli dokumen
+- `GET /health` — health check API
+
+---
+
+## Catatan tambahan
+
+Proyek ini dibuat sebagai solusi prototype dengan fokus pada validasi konsep: menggabungkan OCR, ekstraksi data, validasi, dan ringkasan AI dalam satu pipeline yang dapat dijalankan secara lokal. Karena itu, arsitektur yang dipilih tetap sederhana, mudah dipahami, dan cepat dikembangkan sebelum masuk ke tahap produksi.
+
+Jika Anda ingin lanjut mengembangkan aplikasi ini ke lingkungan enterprise, langkah berikutnya yang paling penting adalah memperkuat pipeline observability, skalabilitas worker, dan kualitas model untuk berbagai jenis dokumen.
 
 ## Running Ollama
 
