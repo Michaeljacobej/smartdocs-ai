@@ -19,3 +19,20 @@ def test_extraction_confidence_payload_is_json_serializable() -> None:
 
     assert extracted.document_number == "2026-001"
     assert isinstance(confidence_payload["rule_matches"], dict)
+
+
+def test_extracted_fields_accept_total_alias() -> None:
+    payload = {
+        "document_number": "INV-001",
+        "vendor": "ABC Medical",
+        "document_date": "2026-10-01",
+        "total": "12500000",
+        "tax_amount": "500000",
+        "currency": "idr",
+    }
+
+    extracted = ExtractedFields.model_validate(payload)
+
+    assert extracted.total_amount == 12500000
+    assert extracted.tax_amount == 500000
+    assert extracted.currency == "IDR"

@@ -73,7 +73,7 @@ export function ExtractedDataForm({ document, onSaved }: { document: DocumentIte
     },
     {
       key: "total_amount",
-      label: "Total Amount",
+      label: "Total",
       original: data?.total_amount_original?.toString() || "-",
       corrected: data?.total_amount_corrected?.toString() || "-",
     },
@@ -129,7 +129,7 @@ export function ExtractedDataForm({ document, onSaved }: { document: DocumentIte
         <input className="border border-slate-300 rounded-lg p-2" placeholder="Vendor" value={form.vendor} onChange={(e) => setForm((s) => ({ ...s, vendor: e.target.value }))} />
         <input className="border border-slate-300 rounded-lg p-2" placeholder="YYYY-MM-DD" value={form.document_date} onChange={(e) => setForm((s) => ({ ...s, document_date: e.target.value }))} />
         <input className="border border-slate-300 rounded-lg p-2" placeholder="Currency (e.g. IDR)" value={form.currency} onChange={(e) => setForm((s) => ({ ...s, currency: e.target.value }))} />
-        <input className="border border-slate-300 rounded-lg p-2" placeholder="Total Amount" value={form.total_amount} onChange={(e) => setForm((s) => ({ ...s, total_amount: e.target.value }))} />
+        <input className="border border-slate-300 rounded-lg p-2" placeholder="Total" value={form.total_amount} onChange={(e) => setForm((s) => ({ ...s, total_amount: e.target.value }))} />
         <input className="border border-slate-300 rounded-lg p-2" placeholder="Tax Amount" value={form.tax_amount} onChange={(e) => setForm((s) => ({ ...s, tax_amount: e.target.value }))} />
       </div>
 

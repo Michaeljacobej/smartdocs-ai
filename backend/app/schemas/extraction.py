@@ -1,6 +1,6 @@
 from datetime import date
 
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
 
 from app.utils.amount_parser import parse_amount
 
@@ -9,7 +9,7 @@ class ExtractedFields(BaseModel):
     document_number: str | None = None
     vendor: str | None = None
     document_date: str | None = None
-    total_amount: float | None = None
+    total_amount: float | None = Field(default=None, validation_alias=AliasChoices("total_amount", "total"))
     tax_amount: float | None = None
     currency: str | None = None
 
@@ -39,7 +39,7 @@ class CorrectionInput(BaseModel):
     document_number: str | None = None
     vendor: str | None = None
     document_date: str | None = None
-    total_amount: float | None = None
+    total_amount: float | None = Field(default=None, validation_alias=AliasChoices("total_amount", "total"))
     tax_amount: float | None = None
     currency: str | None = None
 

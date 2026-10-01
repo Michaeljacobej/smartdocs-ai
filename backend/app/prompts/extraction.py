@@ -14,7 +14,7 @@ Expected JSON:
   "document_number": string | null,
   "vendor": string | null,
   "document_date": string | null,
-  "total_amount": number | null,
+  "total": number | null,
   "tax_amount": number | null,
   "currency": string | null
 }}
