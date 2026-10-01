@@ -1,5 +1,9 @@
+import logging
+
 from fastapi import Request
 from fastapi.responses import JSONResponse
+
+logger = logging.getLogger(__name__)
 
 
 class AppError(Exception):
@@ -44,14 +48,32 @@ class ProcessingFailedError(AppError):
     message = "Document processing failed"
 
 
-def app_error_handler(_: Request, exc: AppError) -> JSONResponse:
+def app_error_handler(request: Request, exc: AppError) -> JSONResponse:
+    logger.warning(
+        "Application error handled",
+        extra={
+            "event": "app_error",
+            "error_code": exc.code,
+            "status_code": exc.status_code,
+            "method": request.method,
+            "path": request.url.path,
+        },
+    )
     return JSONResponse(
         status_code=exc.status_code,
         content={"error": {"code": exc.code, "message": exc.message}},
     )
 
 
-def internal_error_handler(_: Request, __: Exception) -> JSONResponse:
+def internal_error_handler(request: Request, exc: Exception) -> JSONResponse:
+    logger.exception(
+        "Unhandled internal error",
+        extra={
+            "event": "internal_server_error",
+            "method": request.method,
+            "path": request.url.path,
+        },
+    )
     return JSONResponse(
         status_code=500,
         content={"error": {"code": "INTERNAL_SERVER_ERROR", "message": "Unexpected server error"}},

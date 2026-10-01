@@ -64,12 +64,26 @@ class DocumentService:
         db.add(created)
         db.commit()
         db.refresh(created)
+        logger.info(
+            "Document created",
+            extra={
+                "event": "document_created",
+                "document_id": str(created.id),
+                "file_name": created.file_name,
+                "file_size": created.file_size,
+                "mime_type": created.mime_type,
+            },
+        )
         return created
 
     def process_document(self, db: Session, document_id: UUID) -> None:
         repo = self.repo_class(db)
         document = repo.get(document_id)
         if not document:
+            logger.warning(
+                "Document not found during processing",
+                extra={"event": "document_not_found_for_processing", "document_id": str(document_id)},
+            )
             return
 
         document.processing_status = ProcessingStatus.PROCESSING
@@ -109,13 +123,30 @@ class DocumentService:
             document.processing_status = ProcessingStatus.COMPLETED
             db.add(document)
             db.commit()
+            logger.info(
+                "Document processed",
+                extra={
+                    "event": "document_processed",
+                    "document_id": str(document.id),
+                    "document_type": document.document_type,
+                    "ocr_processing_time_ms": ocr.processing_time_ms,
+                },
+            )
         except RuntimeError as exc:
+            logger.exception(
+                "Document processing dependency failure",
+                extra={"event": "document_processing_dependency_failure", "document_id": str(document.id)},
+            )
             self._mark_failed(db, document, str(exc))
             raise ServiceUnavailableError("OCR or LLM service unavailable") from exc
         except ExtractionError as exc:
+            logger.warning(
+                "Document extraction failed",
+                extra={"event": "document_extraction_failed", "document_id": str(document.id), "reason": str(exc)},
+            )
             self._mark_failed(db, document, str(exc))
         except Exception:
-            logger.exception("Document processing failed")
+            logger.exception("Document processing failed", extra={"event": "document_processing_failed", "document_id": str(document.id)})
             self._mark_failed(db, document, "Unexpected processing error")
 
     def list_documents(self, db: Session) -> list[Document]:
@@ -138,6 +169,7 @@ class DocumentService:
         repo = self.repo_class(db)
         repo.delete(document)
         db.commit()
+        logger.info("Document deleted", extra={"event": "document_deleted", "document_id": str(document_id)})
 
     def update_extracted_data(self, db: Session, document_id: UUID, payload: CorrectionInput) -> Document:
         document = self.get_document(db, document_id)
@@ -157,6 +189,7 @@ class DocumentService:
         db.add(document)
         db.commit()
         db.refresh(document)
+        logger.info("Extracted data corrected", extra={"event": "document_corrected", "document_id": str(document_id)})
         return document
 
     def _mark_failed(self, db: Session, document: Document, message: str) -> None:
@@ -168,6 +201,10 @@ class DocumentService:
         document.processing_status = ProcessingStatus.FAILED
         db.add(document)
         db.commit()
+        logger.error(
+            "Document marked as failed",
+            extra={"event": "document_marked_failed", "document_id": str(document.id), "reason": message[:200]},
+        )
 
     @staticmethod
     def _to_stream(file_bytes: bytes) -> BinaryIO:

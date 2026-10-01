@@ -181,6 +181,18 @@ Error payload format:
 }
 ```
 
+## Logging
+
+Backend logs use structured JSON output to make filtering and tracing easier in terminal or log collectors.
+
+Included fields:
+- `timestamp`
+- `level`
+- `logger`
+- `message`
+- `event`
+- `request_id` (for HTTP lifecycle correlation)
+
 ## Environment Variables
 
 Root `.env` (example in `.env.example`):
@@ -207,6 +219,7 @@ Root `.env` (example in `.env.example`):
 - `MAX_FILE_SIZE_MB`
 - `APP_ENV`
 - `DEBUG`
+- `LOG_LEVEL`
 - `NEXT_PUBLIC_API_BASE_URL`
 
 ## Installation

@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     app_name: str = "AI Document Processing Portal"
     app_env: str = "dev"
     debug: bool = False
+    log_level: str = Field(default="INFO", alias="LOG_LEVEL")
 
     database_url: str = Field(
         default="postgresql+psycopg://postgres:postgres@localhost:5432/document_ai",

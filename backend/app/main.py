@@ -1,15 +1,21 @@
+import logging
+from time import perf_counter
+from uuid import uuid4
+
 from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.requests import Request
 from fastapi.responses import JSONResponse
 
 from app.api.errors import AppError, app_error_handler, internal_error_handler
 from app.api.routes.documents import router as documents_router
 from app.core.config import get_settings
-from app.core.logging import configure_logging
+from app.core.logging import bind_log_context, clear_log_context, configure_logging
 
-configure_logging()
 settings = get_settings()
+configure_logging(settings.log_level)
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title=settings.app_name)
 
@@ -27,8 +33,64 @@ app.add_exception_handler(AppError, app_error_handler)
 app.add_exception_handler(Exception, internal_error_handler)
 
 
+@app.middleware("http")
+async def log_http_requests(request: Request, call_next):
+    request_id = request.headers.get("X-Request-ID") or uuid4().hex
+    bind_log_context(request_id=request_id)
+
+    start_time = perf_counter()
+    logger.info(
+        "HTTP request started",
+        extra={
+            "event": "http_request_started",
+            "method": request.method,
+            "path": request.url.path,
+            "query": request.url.query,
+        },
+    )
+
+    try:
+        response = await call_next(request)
+        elapsed_ms = round((perf_counter() - start_time) * 1000, 2)
+        response.headers["X-Request-ID"] = request_id
+        logger.info(
+            "HTTP request completed",
+            extra={
+                "event": "http_request_completed",
+                "method": request.method,
+                "path": request.url.path,
+                "status_code": response.status_code,
+                "duration_ms": elapsed_ms,
+            },
+        )
+        return response
+    except Exception:
+        elapsed_ms = round((perf_counter() - start_time) * 1000, 2)
+        logger.exception(
+            "HTTP request failed",
+            extra={
+                "event": "http_request_failed",
+                "method": request.method,
+                "path": request.url.path,
+                "duration_ms": elapsed_ms,
+            },
+        )
+        raise
+    finally:
+        clear_log_context()
+
+
 @app.exception_handler(RequestValidationError)
-async def request_validation_exception_handler(_, exc: RequestValidationError) -> JSONResponse:
+async def request_validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
+    logger.warning(
+        "Request payload validation failed",
+        extra={
+            "event": "request_validation_failed",
+            "method": request.method,
+            "path": request.url.path,
+            "error_count": len(exc.errors()),
+        },
+    )
     return JSONResponse(
         status_code=422,
         content={
