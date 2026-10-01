@@ -117,6 +117,7 @@ class DocumentService:
                 extracted=extracted,
                 field_confidences=field_confidences,
                 anomaly_count=len(validation.anomalies),
+                accept_threshold=get_settings().confidence_accept_threshold,
             )
 
             extracted_data = document.extracted_data or ExtractedData(document_id=document.id)
@@ -263,8 +264,8 @@ class DocumentService:
         extracted,
         field_confidences: dict[str, float],
         anomaly_count: int,
+        accept_threshold: float,
     ) -> dict:
-        accept_threshold = 0.78
         critical_fields = (
             "document_number",
             "vendor",

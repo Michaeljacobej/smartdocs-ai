@@ -38,6 +38,8 @@ class Settings(BaseSettings):
     summary_max_ocr_chars: int = Field(default=20000, alias="SUMMARY_MAX_OCR_CHARS")
     summary_reuse_existing: bool = Field(default=True, alias="SUMMARY_REUSE_EXISTING")
 
+    confidence_accept_threshold: float = Field(default=0.60, alias="CONFIDENCE_ACCEPT_THRESHOLD")
+
     upload_dir: str = Field(default="./uploads", alias="UPLOAD_DIR")
     max_file_size_mb: int = Field(default=10, alias="MAX_FILE_SIZE_MB")
 
