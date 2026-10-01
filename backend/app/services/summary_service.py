@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.db.models import Document, Summary
-from app.prompts.summary import SUMMARY_PROMPT_TEMPLATE
+from app.prompts.summary import get_summary_prompt_template
 from app.services.llm.base import LLMProvider
 
 
@@ -26,7 +26,8 @@ class SummaryService:
         if len(raw_text) > max_chars:
             raw_text = raw_text[:max_chars]
 
-        prompt = SUMMARY_PROMPT_TEMPLATE.format(raw_ocr_text=raw_text)
+        template = get_summary_prompt_template(getattr(document, "document_type", None))
+        prompt = template.format(raw_ocr_text=raw_text)
         summary_text = self._generate_summary_text(prompt, document, raw_text)
 
         if existing:
@@ -60,52 +61,60 @@ class SummaryService:
         return self._fallback_summary(document=document, raw_text=raw_text)
 
     def _fallback_summary(self, document: Document, raw_text: str) -> str:
+        document_type = getattr(document, "document_type", None) or "other"
         extracted = getattr(document, "extracted_data", None)
-        doc_type = getattr(document, "document_type", None) or "dokumen transaksi"
 
-        if extracted:
-            vendor = extracted.vendor_corrected or extracted.vendor_original
-            doc_number = extracted.document_number_corrected or extracted.document_number_original
-            doc_date = extracted.document_date_corrected or extracted.document_date_original
-            total = extracted.total_amount_corrected or extracted.total_amount_original
-            tax_amount = extracted.tax_amount_corrected or extracted.tax_amount_original
-            currency = extracted.currency_corrected or extracted.currency_original
+        if document_type == "invoice":
+            if extracted:
+                vendor = extracted.vendor_corrected or extracted.vendor_original
+                doc_number = extracted.document_number_corrected or extracted.document_number_original
+                doc_date = extracted.document_date_corrected or extracted.document_date_original
+                total = extracted.total_amount_corrected or extracted.total_amount_original
+                tax_amount = extracted.tax_amount_corrected or extracted.tax_amount_original
+                currency = extracted.currency_corrected or extracted.currency_original
 
-            sentences: list[str] = []
-            vendor_text = vendor or "informasi tidak tersedia"
-            sentences.append(f"Dokumen ini merupakan {doc_type} yang diterbitkan oleh {vendor_text}.")
-            if doc_number:
-                sentences.append(f"Nomor dokumen yang tercatat adalah {doc_number}.")
-            if doc_date:
-                sentences.append(f"Transaksi berlangsung pada tanggal {doc_date}.")
-            if total is not None:
-                total_text = f"{total:,.2f}".rstrip("0").rstrip(".")
-                if currency:
-                    sentences.append(f"Total nilai transaksi tercatat sebesar {currency} {total_text}.")
-                else:
-                    sentences.append(f"Total nilai transaksi tercatat sebesar {total_text}.")
-            if tax_amount is not None:
-                tax_text = f"{tax_amount:,.2f}".rstrip("0").rstrip(".")
-                sentences.append(f"Besaran pajak atau potongan yang tersedia adalah {tax_text}.")
-            if not sentences:
-                sentences.append("Dokumen ini merupakan dokumen transaksi dengan informasi utama yang belum lengkap untuk review.")
-            else:
-                sentences.append("Informasi ini disusun untuk kebutuhan review operasional dan dapat dikonfirmasi kembali bila terdapat data pendukung yang belum lengkap.")
-            summary = " ".join(sentences).strip()
-            if not summary.endswith("."):
-                summary += "."
+                sentences: list[str] = []
+                vendor_text = vendor or "informasi tidak tersedia"
+                sentences.append(f"Invoice #{doc_number or 'informasi tidak tersedia'} diterbitkan pada tanggal {doc_date or 'informasi tidak tersedia'} untuk {vendor_text}.")
+                if total is not None:
+                    total_text = f"{total:,.2f}".rstrip("0").rstrip(".")
+                    if currency:
+                        sentences.append(f"Total tagihan yang tercantum adalah {currency} {total_text}.")
+                    else:
+                        sentences.append(f"Total tagihan yang tercantum adalah Rp {total_text}.")
+                if tax_amount is not None:
+                    tax_text = f"{tax_amount:,.2f}".rstrip("0").rstrip(".")
+                    sentences.append(f"Besaran pajak atau potongan yang tersedia adalah {tax_text}.")
+                sentences.append("Informasi ini penting untuk review tagihan dan proses penagihan pelanggan.")
+                summary = " ".join(sentences).strip()
+                return summary if summary.endswith(".") else summary + "."
+
+            parsed = self._parse_invoice_summary(raw_text)
+            if parsed:
+                return parsed
+
+        elif document_type == "receipt":
+            lines = [line.strip() for line in raw_text.splitlines() if line.strip()]
+            summary = "Dokumen ini merupakan struk pembayaran yang berisi rincian transaksi utama untuk kebutuhan verifikasi." \
+                " Informasi yang terlihat mencakup tanggal transaksi, nominal pembayaran, dan rincian item atau layanan yang dibeli."
+            if lines:
+                first = lines[0][:180]
+                summary += f" Konten awal yang terbaca menunjukkan: {first}."
             return summary
 
-        parsed = self._parse_invoice_summary(raw_text)
-        if parsed:
-            return parsed
+        elif document_type == "billing_statement":
+            summary = "Dokumen ini merupakan laporan tagihan atau statement yang berisi informasi saldo dan kewajiban pembayaran." \
+                " Informasi utama yang terlihat mencakup periode tagihan, nominal yang harus dibayarkan, dan detail rekening atau akun terkait."
+            if raw_text:
+                summary += " Informasi lebih lanjut dapat dikonfirmasi melalui dokumen sumber bila diperlukan."
+            return summary
 
         lines = [line.strip() for line in raw_text.splitlines() if line.strip()]
-        summary = "Dokumen ini merupakan dokumen transaksi yang memuat informasi utama untuk kebutuhan review bisnis."
+        summary = "Dokumen ini merupakan dokumen bisnis yang memuat informasi utama untuk kebutuhan review operasional."
         if lines:
             first = lines[0][:180]
             summary += f" Konten awal yang terbaca menunjukkan: {first}."
-        summary += " Informasi lebih lanjut dapat dikonfirmasi melalui dokumen sumber bila diperlukan."
+        summary += " Informasi yang tidak tersedia pada dokumen dicatat sebagai informasi tidak tersedia."
         return summary
 
     def _parse_invoice_summary(self, raw_text: str) -> str | None:
