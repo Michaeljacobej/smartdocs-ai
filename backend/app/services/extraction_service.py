@@ -58,8 +58,19 @@ class ExtractionService:
             doc_number = doc_number[3:].lstrip("-/")
         vendor = self._extract_vendor(text)
         doc_date = self._extract_date(text)
-        total = self._extract_amount(text, [r"TOTAL\s*(?:AMOUNT)?\s*[:\-]?\s*([0-9.,]+)"])
-        tax = self._extract_amount(text, [r"(?:TAX|PPN|VAT)\s*[:\-]?\s*([0-9.,]+)"])
+        total = self._extract_amount(
+            text,
+            [
+                r"GRAND\s*TOTAL\s*[:\-]?\s*(?:RP|IDR|USD|EUR|SGD|JPY|MYR|THB|PHP)?\s*([0-9][0-9.,\s]*)",
+                r"(?<!SUB\s)TOTAL\b\s*(?:AMOUNT)?\s*[:\-]?\s*(?:RP|IDR|USD|EUR|SGD|JPY|MYR|THB|PHP)?\s*([0-9][0-9.,\s]*)",
+            ],
+        )
+        tax = self._extract_amount(
+            text,
+            [
+                r"(?:TAX|PPN|VAT)\s*(?:AMOUNT)?\s*[:\-]?\s*(?:RP|IDR|USD|EUR|SGD|JPY|MYR|THB|PHP)?\s*([0-9][0-9.,\s]*)",
+            ],
+        )
         currency = self._extract_currency(text)
 
         return ExtractedFields(

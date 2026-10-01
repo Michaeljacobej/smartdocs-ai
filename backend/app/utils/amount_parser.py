@@ -22,9 +22,19 @@ def parse_amount(value: str | float | int | None) -> float | None:
         else:
             normalized = raw.replace(",", "")
     elif raw.count(",") > 0:
-        normalized = raw.replace(".", "").replace(",", ".")
+        parts = raw.split(",")
+        if len(parts) > 1 and all(len(part) == 3 for part in parts[1:]):
+            normalized = "".join(parts)
+        else:
+            normalized = raw.replace(".", "").replace(",", ".")
+    elif raw.count(".") > 0:
+        parts = raw.split(".")
+        if len(parts) > 1 and all(len(part) == 3 for part in parts[1:]):
+            normalized = "".join(parts)
+        else:
+            normalized = raw.replace(",", "")
     else:
-        normalized = raw.replace(",", "")
+        normalized = raw
 
     try:
         return float(Decimal(normalized))

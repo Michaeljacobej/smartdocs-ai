@@ -36,3 +36,18 @@ def test_extracted_fields_accept_total_alias() -> None:
     assert extracted.total_amount == 12500000
     assert extracted.tax_amount == 500000
     assert extracted.currency == "IDR"
+
+
+def test_rule_extraction_reads_total_with_rp_prefix() -> None:
+    service = ExtractionService()
+    text = """
+    Invoice # 71
+    Produk saya 2 1.250.000 2.500.000
+    Layanan saya 1 2.500.000 2.500.000
+    Sub total: Rp 5.000.000
+    Total: Rp 5.000.000
+    """
+
+    extracted, _ = service.extract(text)
+
+    assert extracted.total_amount == 5000000
