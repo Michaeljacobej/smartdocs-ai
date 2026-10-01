@@ -29,9 +29,15 @@ export interface ExtractedData {
   tax_amount_corrected: number | null;
   currency_original: string | null;
   currency_corrected: string | null;
-  confidence_data: Record<string, unknown> | null;
+  confidence_data: ExtractionConfidenceData | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface ExtractionConfidenceData {
+  anomalies?: Array<{ type: string; message: string }>;
+  ocr_lines?: Array<{ text: string; confidence: number | null }>;
+  field_confidences?: Record<string, number>;
 }
 
 export interface Summary {

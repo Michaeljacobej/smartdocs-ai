@@ -91,6 +91,13 @@ export function ExtractedDataForm({ document, onSaved }: { document: DocumentIte
     },
   ];
 
+  const fieldConfidences = data?.confidence_data?.field_confidences ?? {};
+
+  const formatConfidence = (value: number | undefined) => {
+    if (value === undefined || Number.isNaN(value)) return "-";
+    return `${Math.round(value * 100)}%`;
+  };
+
   return (
     <div className="panel p-4 space-y-4">
       <h3 className="text-lg font-semibold">Extracted Information</h3>
@@ -101,6 +108,7 @@ export function ExtractedDataForm({ document, onSaved }: { document: DocumentIte
               <th className="py-2">Field</th>
               <th className="py-2">Original Value</th>
               <th className="py-2">Corrected Value</th>
+              <th className="py-2">Confidence</th>
             </tr>
           </thead>
           <tbody>
@@ -109,6 +117,7 @@ export function ExtractedDataForm({ document, onSaved }: { document: DocumentIte
                 <td className="py-2 font-medium">{row.label}</td>
                 <td className="py-2 text-slate-600">{row.original}</td>
                 <td className="py-2 text-slate-900">{row.corrected}</td>
+                <td className="py-2 text-slate-700">{formatConfidence(fieldConfidences[row.key])}</td>
               </tr>
             ))}
           </tbody>

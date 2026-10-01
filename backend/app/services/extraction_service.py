@@ -20,7 +20,7 @@ class ExtractionService:
 
     def extract(self, ocr_text: str, _document_type: str | None = None) -> tuple[ExtractedFields, dict]:
         rule_data = self._rule_extract(ocr_text)
-        confidence_payload: dict = {"rule_matches": rule_data.copy()}
+        confidence_payload: dict = {"rule_matches": rule_data.model_dump()}
 
         needs_llm = any(value is None for value in rule_data.model_dump().values())
         if needs_llm and self.llm_provider:
@@ -31,6 +31,7 @@ class ExtractionService:
                     merged[key] = value
             final = ExtractedFields(**merged)
             confidence_payload["llm_used"] = True
+            confidence_payload["llm_matches"] = llm_data.model_dump()
             return final, confidence_payload
 
         confidence_payload["llm_used"] = False

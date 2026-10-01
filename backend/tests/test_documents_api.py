@@ -1,9 +1,12 @@
+import time
 from datetime import datetime, timezone
+from pathlib import Path
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
 
 from app.api.errors import NotFoundError, UnsupportedFileError
+from app.core.config import Settings
 from app.main import app
 from app.services.service_registry import document_service
 
@@ -26,6 +29,12 @@ def _doc_stub():
         "extracted_data": None,
         "summary": None,
     }
+
+
+def test_upload_path_is_resolved_from_backend_root():
+    settings = Settings(upload_dir="./uploads")
+    expected = (Path(__file__).resolve().parents[1] / "uploads").resolve()
+    assert settings.upload_path == expected
 
 
 def test_unsupported_file_type(monkeypatch):
@@ -64,6 +73,30 @@ def test_basic_document_upload(monkeypatch):
     )
     assert response.status_code == 201
     assert response.json()["file_name"] == "invoice.png"
+
+
+def test_upload_returns_quickly_without_waiting_for_background_processing(monkeypatch):
+    class Obj:
+        def __init__(self):
+            for k, v in _doc_stub().items():
+                setattr(self, k, v)
+
+    monkeypatch.setattr(document_service, "create_document", lambda _db, _file, _bytes: Obj())
+
+    def slow_process(_db, _id):
+        time.sleep(1.5)
+
+    monkeypatch.setattr(document_service, "process_document", slow_process)
+
+    start = time.perf_counter()
+    response = client.post(
+        "/documents",
+        files={"file": ("invoice.png", b"imgdata", "image/png")},
+    )
+    elapsed = time.perf_counter() - start
+
+    assert response.status_code == 201
+    assert elapsed < 0.5
 
 
 def test_corrected_extraction(monkeypatch):
