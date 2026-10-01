@@ -45,7 +45,7 @@ async def upload_document(
 ) -> DocumentOut:
     logger.info(
         "Document upload received",
-        extra={"event": "document_upload_received", "filename": file.filename, "content_type": file.content_type},
+        extra={"event": "document_upload_received", "file_name": file.filename, "content_type": file.content_type},
     )
     file_bytes = await file.read()
     created = document_service.create_document(db, file, file_bytes)

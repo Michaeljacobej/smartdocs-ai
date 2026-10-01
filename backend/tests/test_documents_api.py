@@ -37,6 +37,17 @@ def test_upload_path_is_resolved_from_backend_root():
     assert settings.upload_path == expected
 
 
+def test_cors_allows_local_dev_origins():
+    response = client.get(
+        "/health",
+        headers={
+            "Origin": "http://0.0.0.0:3000",
+        },
+    )
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "http://0.0.0.0:3000"
+
+
 def test_unsupported_file_type(monkeypatch):
     def fake_create(_db, _file, _bytes):
         raise UnsupportedFileError("Unsupported file")

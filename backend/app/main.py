@@ -1,4 +1,5 @@
 import logging
+import os
 from time import perf_counter
 from uuid import uuid4
 
@@ -17,11 +18,27 @@ settings = get_settings()
 configure_logging(settings.log_level)
 logger = logging.getLogger(__name__)
 
+local_dev_origins = {
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://0.0.0.0:3000",
+    "http://localhost:3001",
+    "http://127.0.0.1:3001",
+    "http://0.0.0.0:3001",
+    "http://[::1]:3000",
+    "http://[::1]:3001",
+}
+
+env_origins = os.getenv("CORS_ALLOWED_ORIGINS", "")
+if env_origins:
+    local_dev_origins.update(origin.strip() for origin in env_origins.split(",") if origin.strip())
+
 app = FastAPI(title=settings.app_name)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=list(local_dev_origins),
+    allow_origin_regex=r"https?://(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])(:\d+)?$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
