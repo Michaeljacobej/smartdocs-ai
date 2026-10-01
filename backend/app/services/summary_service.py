@@ -1,4 +1,5 @@
 import re
+from datetime import datetime
 
 from sqlalchemy.orm import Session
 
@@ -61,30 +62,37 @@ class SummaryService:
         return self._fallback_summary(document=document, raw_text=raw_text)
 
     def _fallback_summary(self, document: Document, raw_text: str) -> str:
-        document_type = getattr(document, "document_type", None) or "other"
+        document_type = getattr(document, "document_type", None)
+        if document_type:
+            resolved_type = str(document_type).strip().lower()
+        else:
+            resolved_type = self._infer_document_type(raw_text)
         extracted = getattr(document, "extracted_data", None)
 
-        if document_type == "invoice":
+        if resolved_type == "invoice":
             if extracted:
-                vendor = extracted.vendor_corrected or extracted.vendor_original
-                doc_number = extracted.document_number_corrected or extracted.document_number_original
-                doc_date = extracted.document_date_corrected or extracted.document_date_original
-                total = extracted.total_amount_corrected or extracted.total_amount_original
-                tax_amount = extracted.tax_amount_corrected or extracted.tax_amount_original
-                currency = extracted.currency_corrected or extracted.currency_original
+                vendor = getattr(extracted, "vendor_corrected", None) or getattr(extracted, "vendor_original", None)
+                doc_number = getattr(extracted, "document_number_corrected", None) or getattr(extracted, "document_number_original", None)
+                doc_date = getattr(extracted, "document_date_corrected", None) or getattr(extracted, "document_date_original", None)
+                total = getattr(extracted, "total_amount_corrected", None) or getattr(extracted, "total_amount_original", None)
+                tax_amount = getattr(extracted, "tax_amount_corrected", None) or getattr(extracted, "tax_amount_original", None)
+                currency = getattr(extracted, "currency_corrected", None) or getattr(extracted, "currency_original", None)
 
                 sentences: list[str] = []
                 vendor_text = vendor or "informasi tidak tersedia"
-                sentences.append(f"Invoice #{doc_number or 'informasi tidak tersedia'} diterbitkan pada tanggal {doc_date or 'informasi tidak tersedia'} untuk {vendor_text}.")
+                if doc_number:
+                    sentences.append(f"Dokumen ini merupakan invoice {doc_number} untuk {vendor_text}.")
+                else:
+                    sentences.append(f"Dokumen ini merupakan invoice yang diterbitkan untuk {vendor_text}.")
+                if doc_date:
+                    sentences.append(f"Transaksi terjadi pada tanggal {self._format_display_date(doc_date)}.")
                 if total is not None:
-                    total_text = f"{total:,.2f}".rstrip("0").rstrip(".")
-                    if currency:
-                        sentences.append(f"Total tagihan yang tercantum adalah {currency} {total_text}.")
-                    else:
-                        sentences.append(f"Total tagihan yang tercantum adalah Rp {total_text}.")
+                    total_text = str(int(total)) if float(total).is_integer() else str(total)
+                    currency_name = currency or "IDR"
+                    sentences.append(f"Total nilai transaksi adalah {currency_name} {total_text}.")
                 if tax_amount is not None:
-                    tax_text = f"{tax_amount:,.2f}".rstrip("0").rstrip(".")
-                    sentences.append(f"Besaran pajak atau potongan yang tersedia adalah {tax_text}.")
+                    tax_text = str(int(tax_amount)) if float(tax_amount).is_integer() else str(tax_amount)
+                    sentences.append(f"Pajak yang tercatat adalah {tax_text}.")
                 sentences.append("Informasi ini penting untuk review tagihan dan proses penagihan pelanggan.")
                 summary = " ".join(sentences).strip()
                 return summary if summary.endswith(".") else summary + "."
@@ -93,18 +101,22 @@ class SummaryService:
             if parsed:
                 return parsed
 
-        elif document_type == "receipt":
+        elif resolved_type == "receipt":
             lines = [line.strip() for line in raw_text.splitlines() if line.strip()]
-            summary = "Dokumen ini merupakan struk pembayaran yang berisi rincian transaksi utama untuk kebutuhan verifikasi." \
+            summary = (
+                "Dokumen ini merupakan struk pembayaran yang berisi rincian transaksi utama untuk kebutuhan verifikasi."
                 " Informasi yang terlihat mencakup tanggal transaksi, nominal pembayaran, dan rincian item atau layanan yang dibeli."
+            )
             if lines:
                 first = lines[0][:180]
                 summary += f" Konten awal yang terbaca menunjukkan: {first}."
             return summary
 
-        elif document_type == "billing_statement":
-            summary = "Dokumen ini merupakan laporan tagihan atau statement yang berisi informasi saldo dan kewajiban pembayaran." \
+        elif resolved_type == "billing_statement":
+            summary = (
+                "Dokumen ini merupakan laporan tagihan atau statement yang berisi informasi saldo dan kewajiban pembayaran."
                 " Informasi utama yang terlihat mencakup periode tagihan, nominal yang harus dibayarkan, dan detail rekening atau akun terkait."
+            )
             if raw_text:
                 summary += " Informasi lebih lanjut dapat dikonfirmasi melalui dokumen sumber bila diperlukan."
             return summary
@@ -117,6 +129,34 @@ class SummaryService:
         summary += " Informasi yang tidak tersedia pada dokumen dicatat sebagai informasi tidak tersedia."
         return summary
 
+    @staticmethod
+    def _infer_document_type(raw_text: str) -> str:
+        upper = raw_text.upper()
+        if any(token in upper for token in ["INVOICE", "FAKTUR", "INV-", "INV "]):
+            return "invoice"
+        if any(token in upper for token in ["RECEIPT", "STRUK", "NOTA"]):
+            return "receipt"
+        if any(token in upper for token in ["BILLING STATEMENT", "STATEMENT"]):
+            return "billing_statement"
+        return "other"
+
+    @staticmethod
+    def _format_display_date(raw_value: str | None) -> str:
+        if not raw_value:
+            return "informasi tidak tersedia"
+        cleaned = raw_value.strip()
+        for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y"):
+            try:
+                parsed = datetime.strptime(cleaned, fmt)
+                months = {
+                    1: "Januari", 2: "Februari", 3: "Maret", 4: "April", 5: "Mei", 6: "Juni",
+                    7: "Juli", 8: "Agustus", 9: "September", 10: "Oktober", 11: "November", 12: "Desember",
+                }
+                return f"{parsed.day:02d} {months[parsed.month]} {parsed.year}"
+            except ValueError:
+                continue
+        return cleaned
+
     def _parse_invoice_summary(self, raw_text: str) -> str | None:
         text = raw_text.strip()
         if not text:
@@ -126,7 +166,7 @@ class SummaryService:
         if not any(keyword in lower_text for keyword in ["invoice", "pelanggan", "jatuh tempo", "sub total", "total:"]):
             return None
 
-        invoice_number = self._extract_first_match(text, r"(?:invoice\s*#?|invoice\s*)(\d+[A-Za-z0-9\-]*)")
+        invoice_number = self._extract_first_match(text, r"(?:invoice\s*#?\s*|invoice\s*)([A-Za-z0-9\-]+)")
         customer = self._extract_customer_name(text)
         issue_date = self._extract_date(text, [r"tanggal\s*[:\-]?\s*(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})", r"date\s*[:\-]?\s*(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})"])
         due_date = self._extract_date(text, [r"jatuh\s+tempo\s*[:\-]?\s*(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})", r"due\s*date\s*[:\-]?\s*(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})"])
@@ -138,28 +178,28 @@ class SummaryService:
 
         sentences: list[str] = []
         if invoice_number:
-            sentences.append(f"Invoice #{invoice_number} diterbitkan pada tanggal {self._format_date(issue_date) if issue_date else 'informasi tidak tersedia'}.")
+            sentences.append(f"Dokumen ini merupakan invoice #{invoice_number} dengan tanggal transaksi {self._format_display_date(issue_date) if issue_date else 'informasi tidak tersedia'}.")
         else:
-            sentences.append(f"Dokumen ini merupakan invoice yang diterbitkan pada tanggal {self._format_date(issue_date) if issue_date else 'informasi tidak tersedia'}.")
+            sentences.append(f"Dokumen ini merupakan invoice yang diterbitkan pada tanggal {self._format_display_date(issue_date) if issue_date else 'informasi tidak tersedia'}.")
 
         if customer:
-            sentences.append(f"Dokumen ini ditujukan untuk {customer} yang beralamat di {self._extract_address(text)}.")
+            sentences.append(f"Dokumen ini ditujukan untuk {customer}.")
         elif issue_date:
             sentences.append("Dokumen ini mencakup transaksi pelanggan dengan informasi alamat yang perlu dikonfirmasi lebih lanjut.")
 
         if due_date:
-            sentences.append(f"Tagihan ini jatuh tempo pada {self._format_date(due_date)}, sehingga masuk dalam periode pembayaran yang sudah ditentukan.")
+            sentences.append(f"Tagihan ini jatuh tempo pada {self._format_display_date(due_date)}.")
 
         if subtotal:
             sentences.append(f"Subtotal transaksi tercatat sebesar Rp {subtotal}.")
         if total:
-            sentences.append(f"Total tagihan yang tercantum pada invoice adalah Rp {total}, sesuai dengan jumlah yang harus dibayarkan oleh pelanggan.")
+            sentences.append(f"Total nilai transaksi adalah Rp {total}.")
 
         if bank_name or account or swift:
             bank_text = bank_name or "informasi bank tidak tersedia"
             account_text = account or "informasi rekening tidak tersedia"
             swift_text = swift or "informasi SWIFT/BIC tidak tersedia"
-            sentences.append(f"Pembayaran dapat dilakukan melalui {bank_text} dengan rekening {account_text}, serta kode SWIFT/BIC {swift_text} untuk kebutuhan transfer internasional.")
+            sentences.append(f"Pembayaran dapat dilakukan melalui {bank_text} dengan rekening {account_text}, serta kode SWIFT/BIC {swift_text}.")
 
         if not sentences:
             return None
@@ -218,45 +258,13 @@ class SummaryService:
         return None
 
     def _extract_bank_name(self, text: str) -> str | None:
-        patterns = [
-            r"(?:nama\s+bank|bank\s+name)\s*[:\-]?\s*([A-Za-z0-9 &/.-]{2,80})",
-            r"(?:bank)\s*[:\-]?\s*([A-Za-z0-9 &/.-]{2,80})",
-        ]
-        for pattern in patterns:
-            value = self._extract_first_match(text, pattern)
-            if value:
-                return value
+        bank = self._extract_first_match(text, r"(?:nama\s+bank|bank\s*name)\s*[:\-]?\s*([A-Za-z0-9\s&./\-]{2,80})")
+        if bank:
+            return bank
+        lines = [line.strip() for line in text.splitlines() if line.strip()]
+        for line in lines:
+            if line.lower().startswith("nama bank") or line.lower().startswith("bank"):
+                return line.split(":", 1)[-1].strip() if ":" in line else line
         return None
 
-    def _format_date(self, raw_date: str | None) -> str:
-        if not raw_date:
-            return "informasi tidak tersedia"
-        try:
-            match = re.search(r"(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})", raw_date)
-            if not match:
-                return raw_date
-            day, month, year = match.groups()
-            year_int = int(year)
-            if year_int < 100:
-                year_int += 2000 if year_int < 50 else 1900
-            return f"{day.zfill(2)} {self._month_name(int(month))} {year_int}"
-        except Exception:
-            return raw_date
-
-    def _month_name(self, month_number: int) -> str:
-        months = {
-            1: "Januari",
-            2: "Februari",
-            3: "Maret",
-            4: "April",
-            5: "Mei",
-            6: "Juni",
-            7: "Juli",
-            8: "Agustus",
-            9: "September",
-            10: "Oktober",
-            11: "November",
-            12: "Desember",
-        }
-        return months.get(month_number, str(month_number))
 

@@ -38,7 +38,18 @@ class ExtractionService:
         return rule_data, confidence_payload
 
     def _rule_extract(self, text: str) -> ExtractedFields:
-        doc_number = self._first_match(text, [r"\b(?:INV|INVOICE|RCPT|BILL)[-\s:#]*([A-Z0-9\-/]+)"])
+        doc_number = self._first_match(
+            text,
+            [
+                r"(?<![A-Z0-9])(?:INVOICE|RCPT|BILL)[\s:#-]*([A-Z0-9]+(?:[/-][A-Z0-9]+)*)",
+                r"(?<![A-Z0-9])INV(?=\s|#|:|-|/|$)[\s:#-]*([A-Z0-9]+(?:[/-][A-Z0-9]+)*)",
+                r"(?<![A-Z0-9])(?:INVOICE|INV|RCPT|BILL)[\s:#-]*([A-Z0-9]+)",
+            ],
+        )
+        if doc_number and doc_number.upper().startswith("OICE"):
+            doc_number = None
+        if doc_number and doc_number.upper().startswith("INV") and len(doc_number) > 3:
+            doc_number = doc_number[3:].lstrip("-/")
         vendor = self._extract_vendor(text)
         doc_date = self._extract_date(text)
         total = self._extract_amount(text, [r"TOTAL\s*(?:AMOUNT)?\s*[:\-]?\s*([0-9.,]+)"])
